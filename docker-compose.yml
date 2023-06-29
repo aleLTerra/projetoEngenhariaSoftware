@@ -1,0 +1,122 @@
+version: '3'
+
+volumes:
+  postgres_data:
+    driver: local
+  mysql_data:
+    driver: local
+
+services:
+  quarkus-service:
+    image: alessandraterra/projetoengenhariasoftware:v0.1
+    ports:
+      - "8081:8081"
+    networks:
+      - auth-network
+    environment:
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:mysql://dbapp:3306/converter
+      QUARKUS_DATASOURCE_USERNAME: admin
+      QUARKUS_DATASOURCE_PASSWORD: admin
+      QUARKUS_DATASOURCE_DB-KIND: mysql
+      MINIO_ENDPOINT: http://minio:9002
+      MINIO_ACCESSKEY: ROOTNAME
+      dev_minio_secretkey: CHANGEME123
+      rabbitmq-host: rabbitmq
+      rabbitmq-port: 5672
+      rabbitmq-username: myuser
+      rabbitmq-password: mypassword
+      rabbitmqclient.virtual-host: /
+      rabbitmqclient.username: myuser
+      rabbitmqclient.password: mypassword
+      rabbitmqclient.hostname: rabbitmq
+      rabbitmqclient.port: 5672
+      oidc.auth-server-url: http://keycloak:8180/auth/realms/quarkus
+      oidc.client-id: backend-service
+      oidc.credentials.secret: secret
+    depends_on:
+      - dbapp
+      - keycloak
+      - minio
+      - rabbitmq3
+  dbapp:
+    image: mysql:8.0
+    volumes:
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: converter
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_ROOT_PASSWORD: admin
+    ports:
+      - "3306:3306"
+    networks:
+      - auth-network
+  postgres:
+    image: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    networks:
+      - auth-network
+  keycloak:
+    image: quay.io/keycloak/keycloak:legacy
+    container_name: "dbk-keycloak"
+    hostname: keycloak
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: postgres
+      DB_DATABASE: keycloak
+      DB_USER: keycloak
+      DB_SCHEMA: public
+      DB_PASSWORD: password
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: Pa55w0rd
+    ports:
+      - "8180:8080"
+    depends_on:
+      - postgres
+    networks:
+      - auth-network
+  minio:
+    image: quay.io/minio/minio
+    ports:
+      - "9002:9000"
+      - "9092:9090"
+    volumes:
+      - ~/minio/data:/data
+    networks:
+      - auth-network
+    environment:
+      - MINIO_ROOT_USER=ROOTNAME
+      - MINIO_ROOT_PASSWORD=CHANGEME123
+    command: server /data --console-address ":9090"
+  rabbitmq3:
+    container_name: "rabbitmq"
+    image: rabbitmq:3.8-management-alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=myuser
+      - RABBITMQ_DEFAULT_PASS=mypassword
+    volumes:
+      - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+      - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+    ports:
+      # AMQP protocol port
+      - '5672:5672'
+      # HTTP management UI
+      - '15672:15672'
+    networks:
+      - auth-network
+#  krakend:
+#    ports:
+#      - "9091:9091"
+#    volumes:
+#      - ./krakend.json:/etc/krakend/krakend.json
+#    networks:
+#      - auth-network
+
+networks:
+  auth-network:
+    driver: bridge
